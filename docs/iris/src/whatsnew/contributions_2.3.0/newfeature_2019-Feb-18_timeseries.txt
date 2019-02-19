@@ -1,0 +1,2 @@
+ * Add support for discrete sampling geometries (cf_role is timeseries_id, profile_id, and trajectory_id).
+ * Allow instance variables (fi. station names in timeseries data) to be non-nummeric.

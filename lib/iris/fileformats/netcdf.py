@@ -506,8 +506,11 @@ def _get_cf_var_data(cf_var, filename):
     dtype = _get_actual_dtype(cf_var)
 
     # Create cube with deferred data, but no metadata
-    fill_value = getattr(cf_var.cf_data, '_FillValue',
-                         netCDF4.default_fillvals[cf_var.dtype.str[1:]])
+    if hasattr(cf_var.dtype, 'str'):
+        fill_value = getattr(cf_var.cf_data, '_FillValue',
+                             netCDF4.default_fillvals[cf_var.dtype.str[1:]])
+    else:
+        fill_value = None
     proxy = NetCDFDataProxy(cf_var.shape, dtype, filename, cf_var.cf_name,
                             fill_value)
     chunks = cf_var.cf_data.chunking()
@@ -1652,8 +1655,13 @@ class Saver(object):
                                               coord)
 
             # Create the CF-netCDF variable.
-            cf_var = self._dataset.createVariable(
-                cf_name, points.dtype.newbyteorder('='), cf_dimensions)
+            try:
+                cf_var = self._dataset.createVariable(
+                    cf_name, points.dtype.newbyteorder('='), cf_dimensions)
+            except TypeError:
+                # deal with string valued variables
+                cf_var = self._dataset.createVariable(
+                    cf_name, str, cf_dimensions)
 
             # Add the axis attribute for spatio-temporal CF-netCDF coordinates.
             if coord in cf_coordinates:

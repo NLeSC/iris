@@ -1148,6 +1148,7 @@ fc_extras
     CF_ATTR_STD_NAME = 'standard_name'
     CF_ATTR_LONG_NAME = 'long_name'
     CF_ATTR_UNITS = 'units'
+    CF_ATTR_ROLE = 'cf_role'
     CF_ATTR_CELL_METHODS = 'cell_methods'
 
     #
@@ -1159,6 +1160,9 @@ fc_extras
     CF_VALUE_AXIS_T = 't'
     CF_VALUE_AXIS_Z = 'z'
 
+    # Attribute - cf_role.
+    CF_VALUE_ROLE = ['timeseries_id', 'profile_id', 'trajectory_id', 'platform_name',
+                     'surface_altitude']
 
     # Attribute - positive.
     CF_VALUE_POSITIVE = ['down', 'up']
@@ -1664,18 +1668,32 @@ fc_extras
         standard_name, long_name, var_name = get_names(cf_coord_var, coord_name, attributes)
 
         # Create the coordinate.
-        try:
-            coord = iris.coords.DimCoord(points_data,
-                                         standard_name=standard_name,
-                                         long_name=long_name,
-                                         var_name=var_name,
-                                         units=attr_units,
-                                         bounds=bounds_data,
+        cf_role = getattr(cf_coord_var, CF_ATTR_ROLE, None)
+        if cf_role in CF_VALUE_ROLE:
+            # Implement Discrete Sampling Geometries, section 9 of CF-1.7
+            #
+            # Issue: the dimension can be of any type, including strings,
+            # and does not need to be monotonic.
+            #
+            # Solution: add an index dimension, and add the original dimension
+            # as a auxillary dimension.
+            coord = iris.coords.DimCoord(np.arange(len(points_data)),
+                                         standard_name=None,
+                                         long_name='idx',
+                                         var_name=var_name + '_idx',
+                                         units=cf_units._UNIT_DIMENSIONLESS,
+                                         bounds=None,
                                          attributes=attributes,
-                                         coord_system=coord_system,
-                                         circular=circular)
-        except ValueError as e_msg:
-            # Attempt graceful loading.
+                                         coord_system=coord_system)
+
+            # Add the dimension coordinate to the cube.
+            if data_dims:
+                cube.add_dim_coord(coord, data_dims)
+            else:
+                # Scalar coords are placed in the aux_coords container.
+                cube.add_aux_coord(coord, data_dims)
+
+            # Add the actual dimension as aux coordinate
             coord = iris.coords.AuxCoord(points_data,
                                          standard_name=standard_name,
                                          long_name=long_name,
@@ -1685,17 +1703,40 @@ fc_extras
                                          attributes=attributes,
                                          coord_system=coord_system)
             cube.add_aux_coord(coord, data_dims)
-            msg = 'Failed to create {name!r} dimension coordinate: {error}\n' \
-                  'Gracefully creating {name!r} auxiliary coordinate instead.'
-            warnings.warn(msg.format(name=str(cf_coord_var.cf_name),
-                                     error=e_msg))
         else:
-            # Add the dimension coordinate to the cube.
-            if data_dims:
-                cube.add_dim_coord(coord, data_dims)
-            else:
-                # Scalar coords are placed in the aux_coords container.
+            # Normal dimension wiht fallback-option
+            try:
+                coord = iris.coords.DimCoord(points_data,
+                                             standard_name=standard_name,
+                                             long_name=long_name,
+                                             var_name=var_name,
+                                             units=attr_units,
+                                             bounds=bounds_data,
+                                             attributes=attributes,
+                                             coord_system=coord_system,
+                                             circular=circular)
+            except ValueError as e_msg:
+                # Attempt graceful loading.
+                coord = iris.coords.AuxCoord(points_data,
+                                             standard_name=standard_name,
+                                             long_name=long_name,
+                                             var_name=var_name,
+                                             units=attr_units,
+                                             bounds=bounds_data,
+                                             attributes=attributes,
+                                             coord_system=coord_system)
                 cube.add_aux_coord(coord, data_dims)
+                msg = 'Failed to create {name!r} dimension coordinate: {error}\n' \
+                      'Gracefully creating {name!r} auxiliary coordinate instead.'
+                warnings.warn(msg.format(name=str(cf_coord_var.cf_name),
+                                         error=e_msg))
+            else:
+                # Add the dimension coordinate to the cube.
+                if data_dims:
+                    cube.add_dim_coord(coord, data_dims)
+                else:
+                    # Scalar coords are placed in the aux_coords container.
+                    cube.add_aux_coord(coord, data_dims)
 
         # Update the coordinate to CF-netCDF variable mapping.
         engine.provides['coordinates'].append((coord, cf_coord_var.cf_name))

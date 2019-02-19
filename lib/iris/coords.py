@@ -534,7 +534,10 @@ class Coord(six.with_metaclass(ABCMeta, CFVariableMixin)):
 
         # Copy data after indexing, to avoid making coords that are
         # views on other coords.  This will not realise lazy data.
-        points = points.copy()
+        # For dimensions of type 'string' this fails; but strings
+        # are always copies
+        if hasattr(points, 'copy'):
+            points = points.copy()
         if bounds is not None:
             bounds = bounds.copy()
 

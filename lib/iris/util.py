@@ -716,7 +716,9 @@ def _slice_data_with_keys(data, keys):
     dims_mapping, slices_iter = column_slices_generator(full_slice, n_dims)
     for this_slice in slices_iter:
         data = data[this_slice]
-        if data.ndim > 0 and min(data.shape) < 1:
+        # For dimensions of type 'string', data.ndim fails
+        # because strings don't have a 'ndim' attribute
+        if hasattr(data, 'ndim') and data.ndim > 0 and min(data.shape) < 1:
             # Disallow slicings where a dimension has no points, like "[5:5]".
             raise IndexError('Cannot index with zero length slice.')
 
